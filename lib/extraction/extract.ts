@@ -1,15 +1,10 @@
 // lib/extraction/extract.ts
 import Anthropic from '@anthropic-ai/sdk';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 import type { ParsedDocument } from '@/lib/parsers/types';
-import {
-  OfferLetterExtractionSchema,
-  VendorQuoteExtractionSchema,
-  schemaFor,
-  type DocumentSchemaType,
-} from '@/lib/schemas/extraction';
+import { schemaFor, type DocumentSchemaType } from '@/lib/schemas/extraction';
 
-const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env — set this in Vercel project settings, never commit it
+const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env — set in Vercel project settings, never commit it
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract structured data from a single document's text.
 
@@ -35,15 +30,15 @@ function buildPageMarkedText(doc: ParsedDocument): string {
  * Runs one document through structured extraction against the given schema type.
  * Returns the raw (unvalidated) tool-call input plus a parsed+validated result;
  * callers should prefer `parsed` and only fall back to `raw` for debugging/logging.
+ *
+ * NOTE: uses Zod 4's native z.toJSONSchema() — do NOT reintroduce the
+ * zod-to-json-schema package. It ships types built for Zod 3 and doesn't
+ * cleanly support Zod 4 schema objects; the native method exists specifically
+ * to replace it and needs no cast, no `as never`, and one fewer dependency.
  */
 export async function extractDocument(doc: ParsedDocument, schemaType: DocumentSchemaType) {
   const schema = schemaFor(schemaType);
-  // zod-to-json-schema@3.25.x types its `schema` arg as Zod 3's ZodType, which
-  // Zod 4's ZodObject no longer satisfies at the type level (upstream
-  // compat gap between the two packages; works at runtime). Cast is a
-  // type-only escape hatch — flagged for the architect to revisit when
-  // zod-to-json-schema ships Zod 4-clean types.
-  const jsonSchema = zodToJsonSchema(schema as never, 'extraction_schema');
+  const jsonSchema = z.toJSONSchema(schema);
   const toolName = schemaType === 'offer_letter' ? 'extract_offer_letter' : 'extract_vendor_quote';
 
   const response = await anthropic.messages.create({
@@ -60,9 +55,7 @@ export async function extractDocument(doc: ParsedDocument, schemaType: DocumentS
       {
         name: toolName,
         description: `Extract structured fields from a ${schemaType.replace('_', ' ')}.`,
-        // zodToJsonSchema wraps the schema under a "definitions" key by name;
-        // Anthropic's tool input_schema wants the bare object schema.
-        input_schema: (jsonSchema.definitions?.extraction_schema ?? jsonSchema) as Anthropic.Tool.InputSchema,
+        input_schema: jsonSchema as Anthropic.Tool.InputSchema,
       },
     ],
     tool_choice: { type: 'tool', name: toolName },
