@@ -1,4 +1,5 @@
 // scripts/test-extraction.ts
+// TODO: verify against live Sonnet output before final demo (blocked on regional API billing)
 //
 // Sanity check for PR2's extraction pipeline.
 //
