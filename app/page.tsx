@@ -33,6 +33,21 @@ interface AlignmentOutcome {
 
 type Stage = 'idle' | 'parsing' | 'extracting' | 'done' | 'error';
 
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
+
+async function readErrorResponse(res: Response): Promise<string> {
+  const text = await res.text();
+  if (res.status === 413 || text.trimStart().startsWith('<')) {
+    return 'Server limit reached (413). Please upload a smaller document.';
+  }
+  try {
+    const body = JSON.parse(text) as { message?: string; error?: string };
+    return body.message ?? body.error ?? `Request failed with status ${res.status}.`;
+  } catch {
+    return `Request failed with status ${res.status}.`;
+  }
+}
+
 export default function Home() {
   const [schemaType, setSchemaType] = useState<DocumentSchemaType>('offer_letter');
   const [files, setFiles] = useState<Record<string, File>>({});
@@ -45,6 +60,14 @@ export default function Home() {
     if (!fileList || fileList.length === 0) return;
 
     const selectedFiles = Array.from(fileList);
+    const oversized = selectedFiles.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+    if (oversized.length > 0) {
+      setErrors(
+        oversized.map((f) => ({ fileName: f.name, message: 'File exceeds 4MB limit for serverless processing.' }))
+      );
+      setStage('error');
+      return;
+    }
     const fileMap: Record<string, File> = {};
     selectedFiles.forEach((f) => (fileMap[f.name] = f));
     setFiles(fileMap);
@@ -60,6 +83,12 @@ export default function Home() {
     let parsedDocuments: ParsedDocument[];
     try {
       const parseRes = await fetch('/api/parse', { method: 'POST', body: formData });
+      if (!parseRes.ok) {
+        const message = await readErrorResponse(parseRes);
+        setErrors((prev) => [...prev, { fileName: '(parse)', message }]);
+        setStage('error');
+        return;
+      }
       const parseBody = await parseRes.json();
       parsedDocuments = parseBody.documents ?? [];
       if (parseBody.errors?.length) {
@@ -83,6 +112,12 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documents: parsedDocuments, schemaType }),
       });
+      if (!extractRes.ok) {
+        const message = await readErrorResponse(extractRes);
+        setErrors((prev) => [...prev, { fileName: '(extract)', message }]);
+        setStage('error');
+        return;
+      }
       const extractBody = await extractRes.json();
       setResults(extractBody.results ?? []);
       setAlignment(extractBody.alignment ?? null);
