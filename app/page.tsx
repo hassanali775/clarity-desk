@@ -52,6 +52,7 @@ async function readErrorResponse(res: Response): Promise<string> {
 
 export default function Home() {
   const [schemaType, setSchemaType] = useState<DocumentSchemaType>('offer_letter');
+  const [useMock, setUseMock] = useState<boolean>(false);
   const [files, setFiles] = useState<Record<string, File>>({});
   const [stage, setStage] = useState<Stage>('idle');
   const [results, setResults] = useState<DocResult[]>([]);
@@ -119,7 +120,8 @@ export default function Home() {
     // Step 2: extract + align
     setStage('extracting');
     try {
-      const extractRes = await fetch('/api/extract', {
+      const extractUrl = useMock ? '/api/compare' : '/api/extract';
+      const extractRes = await fetch(extractUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documents: parsedDocuments, schemaType }),
@@ -145,7 +147,7 @@ export default function Home() {
 
   async function handleLoadSamples() {
     try {
-      setSchemaType('offer_letter');
+      setSchemaType(useMock ? 'vendor_quote' : 'offer_letter');
       const sampleFiles = await Promise.all(
         SAMPLE_FILE_URLS.map(async (url) => {
           const res = await fetch(url);
@@ -162,6 +164,16 @@ export default function Home() {
       setErrors([{ fileName: '(samples)', message: err instanceof Error ? err.message : String(err) }]);
       setStage('error');
     }
+  }
+
+  function toggleMock() {
+    const next = !useMock;
+    setUseMock(next);
+    if (next) setSchemaType('vendor_quote');
+    setResults([]);
+    setAlignment(null);
+    setErrors([]);
+    setStage('idle');
   }
 
   const selectedFileNames = Object.keys(files);
@@ -214,29 +226,49 @@ export default function Home() {
             </div>
 
             {/* Schema Selector Tabs */}
-            <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setSchemaType('offer_letter')}
-                className={`px-4 py-2 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                  schemaType === 'offer_letter'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                💼 Job Offer Letters
-              </button>
-              <button
-                type="button"
-                onClick={() => setSchemaType('vendor_quote')}
-                className={`px-4 py-2 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                  schemaType === 'vendor_quote'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                📊 Vendor Quotations
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSchemaType('offer_letter')}
+                  className={`px-4 py-2 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                    schemaType === 'offer_letter'
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  💼 Job Offer Letters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSchemaType('vendor_quote')}
+                  className={`px-4 py-2 text-xs font-medium rounded-lg transition-all cursor-pointer ${
+                    schemaType === 'vendor_quote'
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  📊 Vendor Quotations
+                </button>
+              </div>
+
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  type="button"
+                  onClick={toggleMock}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer ${
+                    useMock
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/40'
+                      : 'bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                  title="Extract from a hardcoded fixture (no Anthropic API call)"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Mock Data {useMock ? 'ON' : 'OFF'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -365,6 +397,11 @@ export default function Home() {
               <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 Audit Comparison & Traceability Dashboard
+                {useMock && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                    MOCK DATA
+                  </span>
+                )}
               </h2>
               <span className="text-xs font-mono text-slate-500">
                 {results.length} Document{results.length > 1 ? 's' : ''} Analyzed
