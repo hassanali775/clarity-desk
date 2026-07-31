@@ -61,10 +61,18 @@ export default function Home() {
 
     const selectedFiles = Array.from(fileList);
     const oversized = selectedFiles.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+    const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
     if (oversized.length > 0) {
       setErrors(
         oversized.map((f) => ({ fileName: f.name, message: 'File exceeds 4MB limit for serverless processing.' }))
       );
+      setStage('error');
+      return;
+    }
+    if (totalSize > MAX_FILE_SIZE_BYTES) {
+      setErrors([
+        { fileName: '(batch)', message: 'Total size of selected files exceeds 4MB. Please upload fewer or smaller documents.' },
+      ]);
       setStage('error');
       return;
     }
