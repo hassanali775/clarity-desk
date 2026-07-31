@@ -1,4 +1,6 @@
 // app/api/parse/route.ts
+export const maxDuration = 30; // 30 seconds execution limit
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { parsePdf } from '@/lib/parsers/pdf';
 import { parseDocx } from '@/lib/parsers/docx';
