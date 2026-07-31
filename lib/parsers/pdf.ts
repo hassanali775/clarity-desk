@@ -7,11 +7,22 @@
 //   import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 // If that path 404s for your version, check node_modules/pdfjs-dist/legacy/build/.
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import path from 'node:path';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 import type { ParseResult, ParsedPage, TextRun, BoundingBox } from './types';
 
-// No worker in a server context — pdfjs-dist falls back to running inline.
-pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+// No worker in a server context — pdfjs-dist falls back to running inline via
+// the "fake worker", which dynamically imports the worker module. The legacy
+// build's pdf.worker.mjs must be resolvable from node_modules at runtime.
+// (An empty string here makes pdf.js throw "No GlobalWorkerOptions.workerSrc
+// specified" — it must be a truthy module specifier.)
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+
+// Standard 14 fonts (Helvetica etc.) have no embedded font data, so pdf.js
+// needs the shipped LiberationSans metrics. Node's BinaryDataFactory reads
+// these from disk with fs.readFile, which resolves relative to process.cwd().
+const STANDARD_FONT_DATA_URL =
+  path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts') + '/';
 
 function itemToBoundingBox(item: TextItem, viewportHeight: number): BoundingBox {
   // item.transform = [scaleX, skewX, skewY, scaleY, translateX, translateY]
@@ -33,7 +44,7 @@ export async function parsePdf(fileName: string, buffer: ArrayBuffer): Promise<P
     // pdfjs-dist 6.x. In Node the default is already to skip JS-in-PDF
     // evaluation (no `eval()` for embedded PDF scripts), so dropping the flag
     // is the safe default. Re-add `verbosity: 0` if PDF parser logs get noisy.
-    doc = await pdfjsLib.getDocument({ data: buffer }).promise;
+    doc = await pdfjsLib.getDocument({ data: buffer, standardFontDataUrl: STANDARD_FONT_DATA_URL }).promise;
   } catch (cause) {
     return {
       ok: false,

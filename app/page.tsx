@@ -35,6 +35,8 @@ type Stage = 'idle' | 'parsing' | 'extracting' | 'done' | 'error';
 
 const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 
+const SAMPLE_FILE_URLS = ['/samples/offer_a.pdf', '/samples/offer_b.pdf'];
+
 async function readErrorResponse(res: Response): Promise<string> {
   const text = await res.text();
   if (res.status === 413 || text.trimStart().startsWith('<')) {
@@ -58,8 +60,10 @@ export default function Home() {
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
+    await processSelectedFiles(Array.from(fileList));
+  }
 
-    const selectedFiles = Array.from(fileList);
+  async function processSelectedFiles(selectedFiles: File[]) {
     const oversized = selectedFiles.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
     const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
     if (oversized.length > 0) {
@@ -135,6 +139,27 @@ export default function Home() {
       setStage('done');
     } catch (err) {
       setErrors((prev) => [...prev, { fileName: '(extract)', message: err instanceof Error ? err.message : String(err) }]);
+      setStage('error');
+    }
+  }
+
+  async function handleLoadSamples() {
+    try {
+      setSchemaType('offer_letter');
+      const sampleFiles = await Promise.all(
+        SAMPLE_FILE_URLS.map(async (url) => {
+          const res = await fetch(url);
+          if (!res.ok) {
+            throw new Error(`Failed to load sample file ${url}.`);
+          }
+          const blob = await res.blob();
+          const name = url.split('/').filter(Boolean).pop() ?? 'sample.pdf';
+          return new File([blob], name, { type: blob.type || 'application/pdf' });
+        })
+      );
+      await processSelectedFiles(sampleFiles);
+    } catch (err) {
+      setErrors([{ fileName: '(samples)', message: err instanceof Error ? err.message : String(err) }]);
       setStage('error');
     }
   }
@@ -220,11 +245,24 @@ export default function Home() {
               <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
                 2. Upload Documents for Comparison
               </h2>
-              {selectedFileNames.length > 0 && (
-                <span className="text-xs font-mono text-slate-500">
-                  {selectedFileNames.length} file{selectedFileNames.length > 1 ? 's' : ''} loaded
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLoadSamples}
+                  disabled={stage === 'parsing' || stage === 'extracting'}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+                  </svg>
+                  Try Sample Documents
+                </button>
+                {selectedFileNames.length > 0 && (
+                  <span className="text-xs font-mono text-slate-500">
+                    {selectedFileNames.length} file{selectedFileNames.length > 1 ? 's' : ''} loaded
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* File Upload Dropzone */}
