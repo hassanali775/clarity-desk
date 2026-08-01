@@ -98,8 +98,81 @@ function canonicalizeFieldPath(path: string): string {
   return path.replace(/\[(\d+)\]/g, '.$1');
 }
 
+/**
+ * Builds a stable, selector-safe id for a flag's disclosure panel.
+ */
+function flagPanelId(key: string): string {
+  return `flag-panel-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+/**
+ * Toggleable flag badge. A real <button> so the flag's reason + message are
+ * reachable on touch/mobile (hover-only `title` is kept as a desktop
+ * enhancement). Clicking/tapping expands an inline panel — inline expansion
+ * is preferred over a CSS popover because the table lives inside an
+ * `overflow-x-auto` container that would clip an absolutely-positioned
+ * popover, and inline avoids viewport-edge issues on small screens.
+ */
+function FlagBadge({
+  flag,
+  dataField,
+  panelId,
+  open,
+  onToggle,
+}: {
+  flag: FlaggedField;
+  dataField: string;
+  panelId: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <button
+        type="button"
+        data-field={dataField}
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={panelId}
+        title={`${flag.reason}: ${flag.message}`}
+        className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20 cursor-pointer hover:bg-rose-500/20 transition-colors"
+      >
+        <span aria-hidden="true">⚠</span>
+        <span>Needs Review</span>
+        <svg
+          aria-hidden="true"
+          className={`w-2.5 h-2.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div
+          id={panelId}
+          className="mt-0.5 text-[11px] text-slate-700 dark:text-slate-300 bg-rose-500/5 border border-rose-500/20 rounded p-2 max-w-[260px]"
+        >
+          <div className="font-semibold text-rose-700 dark:text-rose-400">{flag.reason}</div>
+          <div className="mt-0.5">{flag.message}</div>
+          {flag.rawQuote && (
+            <div className="mt-1 font-mono text-[10px] text-slate-500 dark:text-slate-400 border-l-2 border-rose-500/40 pl-2">
+              Document: “{flag.rawQuote}”
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComparisonTable({ schemaType, results, alignment, files }: Props) {
   const [selected, setSelected] = useState<{ fileName: string; location: SourceLocation | null } | null>(null);
+  const [openFlag, setOpenFlag] = useState<string | null>(null);
 
   const topFields = schemaType === 'offer_letter' ? OFFER_LETTER_FIELDS : VENDOR_TOP_FIELDS;
 
@@ -124,14 +197,14 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                           {r.fileName}
                         </span>
                         {!r.trusted && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-700 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
                             ⚠ Needs Review
                           </span>
                         )}
                         {schemaType === 'vendor_quote' && r.mathDiscrepancies && (
                           <div>
                             {hasDiscrepancies ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-700 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
                                 ⚠ {r.mathDiscrepancies.length} Math {r.mathDiscrepancies.length > 1 ? 'Mismatches' : 'Mismatch'}
                               </span>
                             ) : (
@@ -196,13 +269,15 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                             </span>
                           )}
                           {flag && (
-                            <span
-                              data-field={field}
-                              className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20"
-                              title={`${flag.reason}: ${flag.message}`}
-                            >
-                              ⚠ Needs Review
-                            </span>
+                            <FlagBadge
+                              flag={flag}
+                              dataField={field}
+                              panelId={flagPanelId(`${r.fileName}::${field}`)}
+                              open={openFlag === `${r.fileName}::${field}`}
+                              onToggle={() =>
+                                setOpenFlag((prev) => (prev === `${r.fileName}::${field}` ? null : `${r.fileName}::${field}`))
+                              }
+                            />
                           )}
                         </div>
                       </td>
@@ -252,7 +327,7 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                           const location = r.locations[`lineItems.${member.lineItemIndex}.total`] ?? null;
                           const itemPath = `lineItems[${member.lineItemIndex}].total`;
                           const discrepancy = r.mathDiscrepancies?.find((d) => d.field === itemPath);
-                          const flag = r.flaggedFields.find((f) => canonicalizeFieldPath(f.fieldPath) === itemPath);
+                          const flag = r.flaggedFields.find((f) => canonicalizeFieldPath(f.fieldPath) === canonicalizeFieldPath(itemPath));
                           const isSelected = selected?.fileName === r.fileName && selected?.location === location && location !== null;
 
                           return (
@@ -282,16 +357,18 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                                   {location && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
                                 </button>
                                 {flag && (
-                                  <span
-                                    data-field={itemPath}
-                                    className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20"
-                                    title={`${flag.reason}: ${flag.message}`}
-                                  >
-                                    ⚠ Needs Review
-                                  </span>
+                                  <FlagBadge
+                                    flag={flag}
+                                    dataField={itemPath}
+                                    panelId={flagPanelId(`${r.fileName}::${itemPath}`)}
+                                    open={openFlag === `${r.fileName}::${itemPath}`}
+                                    onToggle={() =>
+                                      setOpenFlag((prev) => (prev === `${r.fileName}::${itemPath}` ? null : `${r.fileName}::${itemPath}`))
+                                    }
+                                  />
                                 )}
                                 {discrepancy && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-rose-700 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
                                     ⚠ Math Mismatch
                                   </span>
                                 )}
