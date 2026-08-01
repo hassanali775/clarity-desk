@@ -1,0 +1,227 @@
+{
+  "schemaType": "offer_letter",
+  "description": "Adversarial offer-letter extraction fixtures for the verification layer. Every case carries the same canonical source letter (with synonym language: the source says 'Annual Target Compensation', never 'Base Salary'), and a full OfferLetterExtraction object. Cases cover the four failure families a real model produces: salary ranges, OCR-style messy whitespace, missing fields, and synonym ambiguity.",
+  "canonicalSource": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+  "cases": [
+    {
+      "id": "salary-range-valid-quote",
+      "category": "salary_ranges",
+      "description": "Value is the top of the quoted range and the rawQuote is the full verbatim range string. Should pass: the quote exists in the source, the value is honest.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 195000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": true, "flaggedFieldPaths": [], "downgradedFieldPaths": [] }
+    },
+    {
+      "id": "salary-range-hallucinated-beyond-quoted",
+      "category": "salary_ranges",
+      "description": "Model invented a number above the quoted range ($210,000) and fabricated a matching rawQuote. The quote is not in the source: flag QUOTE_NOT_FOUND and downgrade.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 210000, "rawQuote": "$210,000", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["baseSalary"], "downgradedFieldPaths": ["baseSalary"] }
+    },
+    {
+      "id": "salary-range-inferred-value-honest-quote",
+      "category": "salary_ranges",
+      "description": "Model inferred the mid-point (190000) but honestly quoted the full range. Quote exists in source, value is defensible: trusted stays true and the medium confidence is preserved untouched.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 190000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "medium" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": true, "flaggedFieldPaths": [], "downgradedFieldPaths": [], "preservedConfidence": { "baseSalary": "medium" } }
+    },
+    {
+      "id": "salary-range-value-outside-range",
+      "category": "salary_ranges",
+      "description": "The value (210000) is ABOVE the quoted range but the rawQuote ('$185,000 - $195,000') is genuine source text, so the substring check passes. The derivability check then flags VALUE_NOT_DERIVABLE_FROM_QUOTE because 210000 > 195000 — never QUOTE_NOT_FOUND, never a double flag.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 210000, "rawQuote": "$185,000 - $195,000", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["baseSalary"], "downgradedFieldPaths": ["baseSalary"], "reasons": { "baseSalary": "VALUE_NOT_DERIVABLE_FROM_QUOTE" } }
+    },
+    {
+      "id": "ocr-line-break-quote-fails",
+      "category": "ocr_whitespace",
+      "description": "A quote spanning a line break inside a name ('Morgan\\n  Alvarez') is NOT collapsed: the OCR tolerance in the verifier only fixes whitespace inside number tokens, never general whitespace. This deliberately fails QUOTE_NOT_FOUND — it documents the tightened policy, not a regression.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan\n  Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["candidateName"], "downgradedFieldPaths": ["candidateName"], "reasons": { "candidateName": "QUOTE_NOT_FOUND" } }
+    },
+    {
+      "id": "ocr-punctuation-drift-passes",
+      "category": "ocr_whitespace",
+      "description": "OCR punctuation drift '$25 , 000' (whitespace around the comma inside a number token) is tolerated by the narrow normalization and resolves to '$25,000', which IS in the source. Trusted, not flagged.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25 , 000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": true, "flaggedFieldPaths": [], "downgradedFieldPaths": [] }
+    },
+    {
+      "id": "honest-null-not-flagged",
+      "category": "missing_fields",
+      "description": "A field genuinely absent from the document is an honest null (value and rawQuote both null, confidence low). This must never be flagged.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": null, "rawQuote": null, "pageNum": null, "confidence": "low" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": true, "flaggedFieldPaths": [], "downgradedFieldPaths": [] }
+    },
+    {
+      "id": "hallucinated-fill-without-quote",
+      "category": "missing_fields",
+      "description": "The source states 4,000 RSUs but the model filled 12,000 RSUs and supplied no rawQuote at all. Value without a quote is untraceable: flag MISSING_QUOTE.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "12,000 RSUs", "rawQuote": null, "pageNum": null, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["equityValue"], "downgradedFieldPaths": ["equityValue"] }
+    },
+    {
+      "id": "synonym-quote-in-source-passes",
+      "category": "synonyms",
+      "description": "The model quoted the source's actual label 'Annual Target Compensation' rather than 'Base Salary'. The quote is in the source, so it verifies cleanly.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": true, "flaggedFieldPaths": [], "downgradedFieldPaths": [], "preservedConfidence": { "baseSalary": "medium" } }
+    },
+    {
+      "id": "synonym-mismatch-quote-fails",
+      "category": "synonyms",
+      "description": "The model quoted 'Base Salary' but the source only ever says 'Annual Target Compensation'. The quote does not appear verbatim: flag QUOTE_NOT_FOUND even though the value is right.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "Base Salary", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": 25, "rawQuote": "25 days", "pageNum": 1, "confidence": "high" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["baseSalary"], "downgradedFieldPaths": ["baseSalary"] }
+    },
+    {
+      "id": "null-value-fabricated-quote-flagged",
+      "category": "missing_fields",
+      "description": "A null value with a fabricated rawQuote ('35 days of unlimited PTO') that never appears in the source. The quote is a hallucination even though the value is honest: flag QUOTE_NOT_FOUND.",
+      "sourceText": "AEGIS ROBOTICS\nOffer of Employment\n\nDear Morgan Alvarez,\n\nWe are pleased to offer you the position of Senior Software Engineer at AEGIS Robotics.\n\nAnnual Target Compensation: $185,000 - $195,000 (DOE)\nSigning Bonus: $25,000\nEquity: 4,000 RSUs vesting over 4 years with a 1-year cliff\nPerformance Bonus: up to 15% of Annual Target Compensation\nPaid Time Off: 25 days\nRemote Policy: fully remote\nNotice Period: 30 days\nThis offer expires 2026-08-15.\n",
+      "extraction": {
+        "candidateName": { "value": "Morgan Alvarez", "rawQuote": "Morgan Alvarez", "pageNum": 1, "confidence": "high" },
+        "jobTitle": { "value": "Senior Software Engineer", "rawQuote": "Senior Software Engineer", "pageNum": 1, "confidence": "high" },
+        "baseSalary": { "value": 185000, "rawQuote": "$185,000 - $195,000 (DOE)", "pageNum": 1, "confidence": "high" },
+        "signingBonus": { "value": 25000, "rawQuote": "$25,000", "pageNum": 1, "confidence": "high" },
+        "equityValue": { "value": "4,000 RSUs", "rawQuote": "4,000 RSUs", "pageNum": 1, "confidence": "high" },
+        "vestingSchedule": { "value": "4 years with a 1-year cliff", "rawQuote": "vesting over 4 years with a 1-year cliff", "pageNum": 1, "confidence": "high" },
+        "performanceBonus": { "value": "up to 15% of Annual Target Compensation", "rawQuote": "up to 15% of Annual Target Compensation", "pageNum": 1, "confidence": "medium" },
+        "ptoDays": { "value": null, "rawQuote": "35 days of unlimited PTO", "pageNum": null, "confidence": "low" },
+        "remotePolicy": { "value": "fully remote", "rawQuote": "fully remote", "pageNum": 1, "confidence": "high" },
+        "noticePeriod": { "value": "30 days", "rawQuote": "30 days", "pageNum": 1, "confidence": "high" },
+        "offerExpiration": { "value": "2026-08-15", "rawQuote": "2026-08-15", "pageNum": 1, "confidence": "high" }
+      },
+      "expect": { "trusted": false, "flaggedFieldPaths": ["ptoDays"], "downgradedFieldPaths": ["ptoDays"] }
+    }
+  ]
+}
