@@ -8,9 +8,6 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./', import.meta.url)),
     },
   },
-  esbuild: {
-    jsx: 'automatic',
-  },
   test: {
     include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'node',

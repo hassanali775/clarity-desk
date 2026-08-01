@@ -88,6 +88,16 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Normalizes a flagged fieldPath to dot notation so paths produced by the
+ * verifier (lineItems[0].total) match the UI's dotted lookup keys
+ * (lineItems.0.total). Top-level field paths (baseSalary) pass through
+ * unchanged.
+ */
+function canonicalizeFieldPath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, '.$1');
+}
+
 export function ComparisonTable({ schemaType, results, alignment, files }: Props) {
   const [selected, setSelected] = useState<{ fileName: string; location: SourceLocation | null } | null>(null);
 
@@ -113,6 +123,11 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                         <span className="font-mono text-xs truncate max-w-[180px]" title={r.fileName}>
                           {r.fileName}
                         </span>
+                        {!r.trusted && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                            ⚠ Needs Review
+                          </span>
+                        )}
                         {schemaType === 'vendor_quote' && r.mathDiscrepancies && (
                           <div>
                             {hasDiscrepancies ? (
@@ -145,35 +160,51 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                     const val = fieldValue(r.extractions as Record<string, unknown>, field);
                     const isSelected = selected?.fileName === r.fileName && selected?.location === location && location !== null;
                     const numeric = isNumericValue(val);
+                    const flag = r.flaggedFields.find((f) => canonicalizeFieldPath(f.fieldPath) === field);
 
                     return (
                       <td key={r.fileName} className="py-3 px-4 align-top">
-                        {location ? (
-                          <button
-                            type="button"
-                            onClick={() => setSelected({ fileName: r.fileName, location })}
-                            className={`group relative text-left inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded ${
-                              isSelected
-                                ? 'bg-amber-500/20 border-b-2 border-amber-500 text-amber-900 dark:text-amber-200 font-medium'
-                                : 'border-b border-dashed border-amber-500/60 hover:bg-amber-500/10 text-slate-900 dark:text-slate-100'
-                            }`}
-                            title="Click cell target to inspect PDF citation source"
-                          >
-                            <span className={numeric ? 'font-mono tabular-nums' : ''}>
-                              {formatValue(val)}
+                        <div className="flex flex-col gap-1 items-start">
+                          {location ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelected({ fileName: r.fileName, location })}
+                              className={`group relative text-left inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded ${
+                                isSelected
+                                  ? 'bg-amber-500/20 border-b-2 border-amber-500 text-amber-900 dark:text-amber-200 font-medium'
+                                  : 'border-b border-dashed border-amber-500/60 hover:bg-amber-500/10 text-slate-900 dark:text-slate-100'
+                              }`}
+                              title={
+                                flag
+                                  ? `${flag.reason}: ${flag.message}`
+                                  : 'Click cell target to inspect PDF citation source'
+                              }
+                            >
+                              <span className={numeric ? 'font-mono tabular-nums' : ''}>
+                                {formatValue(val)}
+                              </span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-70 group-hover:opacity-100 shrink-0" />
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-slate-500 py-1 px-2">
+                              <span className={numeric ? 'font-mono tabular-nums' : ''}>
+                                {formatValue(val)}
+                              </span>
+                              <span className="text-amber-500/70 text-[11px]" title="Source not verified in document">
+                                ⚠
+                              </span>
                             </span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-70 group-hover:opacity-100 shrink-0" />
-                          </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-slate-500 py-1 px-2">
-                            <span className={numeric ? 'font-mono tabular-nums' : ''}>
-                              {formatValue(val)}
+                          )}
+                          {flag && (
+                            <span
+                              data-field={field}
+                              className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20"
+                              title={`${flag.reason}: ${flag.message}`}
+                            >
+                              ⚠ Needs Review
                             </span>
-                            <span className="text-amber-500/70 text-[11px]" title="Source not verified in document">
-                              ⚠
-                            </span>
-                          </span>
-                        )}
+                          )}
+                        </div>
                       </td>
                     );
                   })}
@@ -219,9 +250,9 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                           }
                           const item = (r.extractions as VendorQuoteExtraction).lineItems[member.lineItemIndex];
                           const location = r.locations[`lineItems.${member.lineItemIndex}.total`] ?? null;
-                          const discrepancy = r.mathDiscrepancies?.find(
-                            (d) => d.field === `lineItems[${member.lineItemIndex}].total`
-                          );
+                          const itemPath = `lineItems[${member.lineItemIndex}].total`;
+                          const discrepancy = r.mathDiscrepancies?.find((d) => d.field === itemPath);
+                          const flag = r.flaggedFields.find((f) => canonicalizeFieldPath(f.fieldPath) === itemPath);
                           const isSelected = selected?.fileName === r.fileName && selected?.location === location && location !== null;
 
                           return (
@@ -239,13 +270,26 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                                         : 'border-b border-dashed border-amber-500/60 hover:bg-amber-500/10 text-slate-900 dark:text-slate-100'
                                       : 'text-slate-500'
                                   }`}
-                                  title={discrepancy?.message ?? (location ? 'Click cell target to inspect PDF citation source' : 'Source not verified')}
+                                  title={
+                                    flag?.message ??
+                                    discrepancy?.message ??
+                                    (location ? 'Click cell target to inspect PDF citation source' : 'Source not verified')
+                                  }
                                 >
                                   <span>
                                     {formatValue(item.qty.value)} × {formatValue(item.unitPrice.value)} = {formatValue(item.total.value)}
                                   </span>
                                   {location && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
                                 </button>
+                                {flag && (
+                                  <span
+                                    data-field={itemPath}
+                                    className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20"
+                                    title={`${flag.reason}: ${flag.message}`}
+                                  >
+                                    ⚠ Needs Review
+                                  </span>
+                                )}
                                 {discrepancy && (
                                   <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
                                     ⚠ Math Mismatch
