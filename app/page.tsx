@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import type { ParsedDocument, SourceLocation } from '@/lib/parsers/types';
 import type { OfferLetterExtraction, VendorQuoteExtraction, DocumentSchemaType } from '@/lib/schemas/extraction';
 import type { MathDiscrepancy } from '@/lib/validation/mathCheck';
+import type { FlaggedField } from '@/lib/extraction/verifier';
 
 const ComparisonTable = dynamic(
   () => import('@/components/ComparisonTable').then((mod) => mod.ComparisonTable),
@@ -20,7 +21,9 @@ export const PdfSourceViewer = dynamic(
 
 interface DocResult {
   fileName: string;
-  extraction: OfferLetterExtraction | VendorQuoteExtraction;
+  trusted: boolean;
+  flaggedFields: FlaggedField[];
+  extractions: OfferLetterExtraction | VendorQuoteExtraction;
   locations: Record<string, SourceLocation | null>;
   mathDiscrepancies?: MathDiscrepancy[];
 }
@@ -124,7 +127,10 @@ export default function Home() {
       const extractRes = await fetch(extractUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documents: parsedDocuments, schemaType }),
+        body: JSON.stringify({
+          documents: parsedDocuments,
+          schemaType,
+        }),
       });
       if (!extractRes.ok) {
         const message = await readErrorResponse(extractRes);

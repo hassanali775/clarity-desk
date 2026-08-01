@@ -1,7 +1,9 @@
 // app/api/extract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { extractDocument } from '@/lib/extraction/extract';
+import { buildPageMarkedText } from '@/lib/extraction/pageText';
 import { locateQuote } from '@/lib/extraction/locate';
+import { verifyExtractions, type FlaggedField } from '@/lib/extraction/verifier';
 import { checkVendorQuoteMath } from '@/lib/validation/mathCheck';
 import { alignLineItems } from '@/lib/alignment/lineItems';
 import type { ParsedDocument } from '@/lib/parsers/types';
@@ -69,7 +71,9 @@ export async function POST(req: NextRequest) {
 
   const results: Array<{
     fileName: string;
-    extraction: OfferLetterExtraction | VendorQuoteExtraction;
+    trusted: boolean;
+    flaggedFields: FlaggedField[];
+    extractions: OfferLetterExtraction | VendorQuoteExtraction;
     locations: Record<string, ReturnType<typeof locateQuote>>;
     mathDiscrepancies?: ReturnType<typeof checkVendorQuoteMath>;
   }> = [];
@@ -82,11 +86,16 @@ export async function POST(req: NextRequest) {
   for (const doc of body.documents) {
     try {
       const { parsed } = await extractDocument(doc, body.schemaType);
-      const locations = resolveLocations(doc, parsed);
+      // Rebuild the exact page-marked text the extractor quoted from, and
+      // re-check every rawQuote against it server-side — no client input
+      // is trusted for verification.
+      const sourceText = buildPageMarkedText(doc);
+      const { trusted, flaggedFields, extractions } = verifyExtractions(parsed, sourceText);
+      const locations = resolveLocations(doc, extractions);
       const mathDiscrepancies =
-        body.schemaType === 'vendor_quote' ? checkVendorQuoteMath(parsed as VendorQuoteExtraction) : undefined;
+        body.schemaType === 'vendor_quote' ? checkVendorQuoteMath(extractions as VendorQuoteExtraction) : undefined;
 
-      results.push({ fileName: doc.fileName, extraction: parsed, locations, mathDiscrepancies });
+      results.push({ fileName: doc.fileName, trusted, flaggedFields, extractions, locations, mathDiscrepancies });
     } catch (err) {
       errors.push({ fileName: doc.fileName, message: err instanceof Error ? err.message : String(err) });
     }
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
   if (body.schemaType === 'vendor_quote' && results.length >= 2) {
     try {
       alignment = await alignLineItems(
-        results.map((r) => ({ fileName: r.fileName, lineItems: (r.extraction as VendorQuoteExtraction).lineItems })),
+        results.map((r) => ({ fileName: r.fileName, lineItems: (r.extractions as VendorQuoteExtraction).lineItems })),
       );
     } catch (err) {
       // Alignment failing should never take down the whole response — the

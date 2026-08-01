@@ -5,13 +5,16 @@ import { useState } from 'react';
 import type { SourceLocation } from '@/lib/parsers/types';
 import type { OfferLetterExtraction, VendorQuoteExtraction, DocumentSchemaType } from '@/lib/schemas/extraction';
 import type { MathDiscrepancy } from '@/lib/validation/mathCheck';
+import type { FlaggedField } from '@/lib/extraction/verifier';
 import dynamic from 'next/dynamic';
 
 const PdfSourceViewer = dynamic(() => import('./PdfSourceViewer'), { ssr: false });
 
 interface DocResult {
   fileName: string;
-  extraction: OfferLetterExtraction | VendorQuoteExtraction;
+  trusted: boolean;
+  flaggedFields: FlaggedField[];
+  extractions: OfferLetterExtraction | VendorQuoteExtraction;
   locations: Record<string, SourceLocation | null>;
   mathDiscrepancies?: MathDiscrepancy[];
 }
@@ -139,7 +142,7 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                   </td>
                   {results.map((r) => {
                     const location = r.locations[field] ?? null;
-                    const val = fieldValue(r.extraction as Record<string, unknown>, field);
+                    const val = fieldValue(r.extractions as Record<string, unknown>, field);
                     const isSelected = selected?.fileName === r.fileName && selected?.location === location && location !== null;
                     const numeric = isNumericValue(val);
 
@@ -214,7 +217,7 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                               </td>
                             );
                           }
-                          const item = (r.extraction as VendorQuoteExtraction).lineItems[member.lineItemIndex];
+                          const item = (r.extractions as VendorQuoteExtraction).lineItems[member.lineItemIndex];
                           const location = r.locations[`lineItems.${member.lineItemIndex}.total`] ?? null;
                           const discrepancy = r.mathDiscrepancies?.find(
                             (d) => d.field === `lineItems[${member.lineItemIndex}].total`
@@ -261,7 +264,7 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                           {r.fileName} (unaligned)
                         </td>
                         <td colSpan={results.length} className="py-3 px-4 font-mono tabular-nums text-xs text-slate-700 dark:text-slate-300">
-                          {(r.extraction as VendorQuoteExtraction).lineItems
+                          {(r.extractions as VendorQuoteExtraction).lineItems
                             .map(
                               (item) =>
                                 `${item.description.value ?? 'Item'} (${formatValue(item.qty.value)} × ${formatValue(item.unitPrice.value)} = ${formatValue(item.total.value)})`
@@ -278,7 +281,7 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
                       <td colSpan={results.length} className="py-3 px-4 text-xs font-mono text-slate-600 dark:text-slate-400">
                         {alignment.unmatched.map(({ quoteIndex, lineItemIndex }, i) => {
                           const doc = results[quoteIndex];
-                          const item = (doc.extraction as VendorQuoteExtraction).lineItems[lineItemIndex];
+                          const item = (doc.extractions as VendorQuoteExtraction).lineItems[lineItemIndex];
                           return (
                             <span key={i} className="inline-block bg-slate-200/60 dark:bg-slate-800 px-2 py-0.5 rounded mr-1.5 mb-1">
                               {doc.fileName}: {item.description.value ?? 'Unlabeled'}

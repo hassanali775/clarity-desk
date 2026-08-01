@@ -3,10 +3,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { ParsedDocument } from '@/lib/parsers/types';
 import { schemaFor, type DocumentSchemaType } from '@/lib/schemas/extraction';
+import { buildPageMarkedText } from '@/lib/extraction/pageText';
+
+export { buildPageMarkedText } from '@/lib/extraction/pageText';
 
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env — set in Vercel project settings, never commit it
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract structured data from a single document's text.
+export const EXTRACTION_SYSTEM_PROMPT = `You extract structured data from a single document's text.
 
 Rules you must follow exactly:
 1. For every field, if you use a value, you MUST also copy the exact verbatim
@@ -21,10 +24,6 @@ Rules you must follow exactly:
    - "low": guessed, ambiguous, or absent
 4. Numbers must be plain numbers with currency symbols and thousands separators
    stripped (e.g. "$120,000" becomes 120000).`;
-
-function buildPageMarkedText(doc: ParsedDocument): string {
-  return doc.pages.map((p) => `[[PAGE ${p.pageNum}]]\n${p.text}`).join('\n\n');
-}
 
 /**
  * Runs one document through structured extraction against the given schema type.

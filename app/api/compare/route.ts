@@ -198,13 +198,17 @@ export async function POST() {
     results: [
       {
         fileName: 'offer_a.pdf',
-        extraction: QUOTE_A,
+        trusted: true,
+        flaggedFields: [],
+        extractions: QUOTE_A,
         locations: LOCATIONS_A,
         mathDiscrepancies: checkVendorQuoteMath(QUOTE_A),
       },
       {
         fileName: 'offer_b.pdf',
-        extraction: QUOTE_B,
+        trusted: true,
+        flaggedFields: [],
+        extractions: QUOTE_B,
         locations: LOCATIONS_B,
         mathDiscrepancies: checkVendorQuoteMath(QUOTE_B),
       },
