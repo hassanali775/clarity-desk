@@ -6,6 +6,10 @@
 // against your installed pdfjs-dist version — this has moved between major versions:
 //   import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 // If that path 404s for your version, check node_modules/pdfjs-dist/legacy/build/.
+//
+// MUST be imported before pdfjs: pdfjs references DOMMatrix/Path2D at module
+// scope and Node/our serverless function has neither (see pdf-polyfills.ts).
+import './pdf-polyfills';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import path from 'node:path';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
