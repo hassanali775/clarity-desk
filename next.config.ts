@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
     serverComponentsExternalPackages: ['pdfjs-dist'],
   },
   outputFileTracingIncludes: {
-    '/api/**/*': ['./node_modules/pdfjs-dist/standard_fonts/**/*'],
+    '/api/**/*': [
+      './node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+      './node_modules/pdfjs-dist/legacy/build/pdf.sandbox.mjs',
+      './node_modules/pdfjs-dist/standard_fonts/**/*',
+    ],
   },
 };
 
