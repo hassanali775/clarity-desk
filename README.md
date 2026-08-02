@@ -54,6 +54,10 @@ Remaining findings and why they are deferred:
 
 No `npm audit fix --force` was run: its proposed resolution (downgrading `next` to `9.3.3`) is a breaking change, and the remaining findings require deliberate upgrade work rather than an automated flag.
 
+## Known Limitations
+
+- **Serverless payload ceiling (4.5MB).** Vercel serverless functions reject request bodies over ~4.5MB, and this applies to user-uploaded documents too — not just the bundled samples — so a real user uploading a large (e.g. image-heavy) PDF will hit the same 413 error the samples used to trigger. Keep uploads well under that size.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
