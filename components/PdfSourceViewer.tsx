@@ -25,10 +25,23 @@ interface Props {
  */
 export default function PdfSourceViewer({ file, location }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [userZoom, setUserZoom] = useState<number>(1.0);
-  const [renderScale, setRenderScale] = useState<number>(1.5);
+  const [renderScale, setRenderScale] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [resizeTick, setResizeTick] = useState<number>(0);
+
+  // Re-render the page whenever its container resizes. The canvas is rendered
+  // at exactly its displayed pixel size, so the highlight overlay must be
+  // redrawn with it to keep a 1:1 mapping onto the visible glyphs.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setResizeTick((t) => t + 1));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!file || !location || location.kind !== 'pdf') return;
@@ -48,8 +61,14 @@ export default function PdfSourceViewer({ file, location }: Props) {
         const page = await doc.getPage(location!.pageNum);
         if (cancelled) return;
 
-        // Render scale combines base resolution factor (1.5) with user zoom multiplier
-        const effectiveScale = 1.5 * userZoom;
+        // Render the page at a scale that fits the container width at zoom=1.0,
+        // then multiply by the user's zoom. The canvas is rendered at exactly
+        // its displayed pixel size (no CSS downscaling), so the overlay below
+        // maps 1:1 onto the visible glyphs instead of drifting off them.
+        const pageWidth = page.getViewport({ scale: 1 }).width;
+        const availableWidth = Math.max(120, (containerRef.current?.clientWidth ?? 800) - 40);
+        const fitScale = Math.max(0.2, availableWidth / pageWidth);
+        const effectiveScale = fitScale * userZoom;
         const viewport = page.getViewport({ scale: effectiveScale });
         const canvas = canvasRef.current;
         if (!canvas || cancelled) return;
@@ -81,7 +100,7 @@ export default function PdfSourceViewer({ file, location }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [file, location, userZoom]);
+  }, [file, location, userZoom, resizeTick]);
 
   return (
     <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl text-slate-200 w-full h-full min-h-[500px]">
@@ -116,7 +135,7 @@ export default function PdfSourceViewer({ file, location }: Props) {
       </div>
 
       {/* Main Canvas Body */}
-      <div className="relative flex-1 overflow-auto bg-slate-950/50 p-4 flex items-center justify-center min-h-[400px]">
+      <div ref={containerRef} className="relative flex-1 overflow-auto bg-slate-950/50 p-4 flex items-center justify-center min-h-[400px]">
         {!location ? (
           <div className="flex flex-col items-center justify-center p-8 text-center max-w-sm">
             <div className="w-12 h-12 rounded-full bg-slate-800/60 border border-slate-700 flex items-center justify-center mb-3 text-slate-400">
@@ -164,14 +183,20 @@ export default function PdfSourceViewer({ file, location }: Props) {
                 <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
               </div>
             )}
-            <canvas ref={canvasRef} className="block max-w-full" />
+            <canvas ref={canvasRef} className="block" />
             <div
               style={{
                 position: 'absolute',
                 left: location.bbox.x * renderScale,
-                top: location.bbox.y * renderScale,
+                // The parse-time bbox is the font's em box (baseline − font size
+                // → baseline), which leaves whitespace above the caps and floats
+                // above the visible glyph ink. Shift the box down ~20% of the
+                // line height and trim the same margin so it hugs the rendered
+                // characters (ascenders → descenders) instead of hovering over
+                // the empty line above them.
+                top: (location.bbox.y + location.bbox.height * 0.2) * renderScale,
                 width: location.bbox.width * renderScale,
-                height: location.bbox.height * renderScale,
+                height: location.bbox.height * 0.9 * renderScale,
               }}
               className="border-2 border-amber-500 bg-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.4)] pointer-events-none rounded-xs transition-all duration-200"
             />
@@ -183,7 +208,7 @@ export default function PdfSourceViewer({ file, location }: Props) {
       {location?.kind === 'pdf' && !error && (
         <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-t border-slate-800 text-xs">
           <span className="text-slate-400 font-mono">
-            Scale: {Math.round(userZoom * 100)}%
+            Zoom: {Math.round(userZoom * 100)}%
           </span>
 
           <div className="flex items-center gap-1">
