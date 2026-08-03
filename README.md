@@ -20,6 +20,22 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Extraction Providers
+
+Extraction is provider-agnostic behind `lib/extraction/extract.ts`. The system prompt and Zod schemas are the contract; only the client differs.
+
+- **Default: Gemini** (`gemini-3.5-flash`, a free-tier model). Driven by the official `@google/genai` SDK, with structured output via `responseJsonSchema` + `responseMimeType: 'application/json'` (`lib/extraction/providers/gemini.ts`). Configure with the `GEMINI_API_KEY` env var; override the model with `GEMINI_MODEL` (e.g. `gemini-3.5-flash-lite`).
+- **Fallback option: Anthropic** (`claude-sonnet-4-6`, the previous default) via `EXTRACTION_PROVIDER=anthropic` (`lib/extraction/providers/anthropic.ts`). The API route also accepts a per-request `provider` field.
+- Set `EXTRACTION_PROVIDER=gemini` (or omit it) to use Gemini, `EXTRACTION_PROVIDER=anthropic` to use Claude.
+
+Live verification harness (requires `GEMINI_API_KEY`):
+
+```bash
+npm run test:gemini
+```
+
+It extracts the bundled sample PDFs and the canonical verifier-fixture letter through the real Gemini API, then re-checks every rawQuote with `verifyExtractions` — the same gate the API route applies.
+
 ## Verification Layer
 
 `lib/extraction/verifier.ts` exports `verifyExtractions(extractions, sourceText)`, which re-checks every extracted field against the original document text before the payload is trusted for comparison. It runs after schema extraction in `app/api/extract/route.ts`, which rebuilds the page-marked source text server-side via `buildPageMarkedText` and passes it in.
@@ -42,6 +58,8 @@ Example — the `salary-range-value-outside-range` fixture in `tests/fixtures/ad
 ## Security & Dependencies
 
 `npm audit` is run as part of pre-release hygiene. Status after `npm audit fix` (the safe, non-breaking pass) on `package-lock.json`:
+
+**Re-audited after adding `@google/genai` (the Gemini provider dependency): the same 4 high-severity findings remain and no new ones were introduced.** `@google/genai` contributes no advisories of its own; everything below is pre-existing (`postcss`/`sharp` vendored by Next.js, plus the direct `xlsx` dependency).
 
 - **Resolved:** `brace-expansion` DoS (GHSA-mh99-v99m-4gvg) — a transitive dev-tooling dependency patched in place. 1 of 5 high-severity findings fixed.
 - **Deferred:** the remaining 4 high-severity findings require dependency upgrades that are not safe or not available, so they are documented here rather than fixed blindly.
