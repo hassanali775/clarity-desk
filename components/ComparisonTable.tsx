@@ -257,10 +257,10 @@ export function ComparisonTable({ schemaType, results, alignment, files, demoMod
                             <button
                               type="button"
                               onClick={() => setSelected({ fileName: r.fileName, location })}
-                              className={`group relative text-left inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded ${
+                              className={`group relative text-left inline-flex items-center gap-1.5 rounded transition-colors cursor-pointer ${
                                 isSelected
-                                  ? 'bg-amber-500/20 border-b-2 border-amber-500 text-amber-900 dark:text-amber-200 font-medium'
-                                  : 'border-b border-dashed border-amber-500/60 hover:bg-amber-500/10 text-slate-900 dark:text-slate-100'
+                                  ? 'text-amber-900 dark:text-amber-200 font-medium'
+                                  : 'text-slate-900 dark:text-slate-100'
                               }`}
                               title={
                                 flag
@@ -268,13 +268,21 @@ export function ComparisonTable({ schemaType, results, alignment, files, demoMod
                                   : 'Click cell target to inspect PDF citation source'
                               }
                             >
-                              <span className={numeric ? 'font-mono tabular-nums' : ''}>
-                                {formatValue(val)}
+                              <span
+                                className={`inline-block leading-none rounded-[3px] px-1 border-b-2 transition-colors ${
+                                  isSelected
+                                    ? 'bg-amber-500/20 border-amber-500'
+                                    : 'border-amber-500/60 border-dashed hover:bg-amber-500/10'
+                                }`}
+                              >
+                                <span className={numeric ? 'font-mono tabular-nums' : ''}>
+                                  {formatValue(val)}
+                                </span>
                               </span>
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-70 group-hover:opacity-100 shrink-0" />
                             </button>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-slate-500 py-1 px-2">
+                            <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-slate-500 px-1 leading-none">
                               <span className={numeric ? 'font-mono tabular-nums' : ''}>
                                 {formatValue(val)}
                               </span>
@@ -351,13 +359,13 @@ export function ComparisonTable({ schemaType, results, alignment, files, demoMod
                                 <button
                                   type="button"
                                   onClick={() => setSelected({ fileName: r.fileName, location })}
-                                  className={`group inline-flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2 rounded font-mono tabular-nums text-xs ${
+                                  className={`group inline-flex items-center gap-1.5 rounded transition-colors cursor-pointer font-mono tabular-nums text-xs ${
                                     discrepancy
-                                      ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                                      ? 'text-rose-700 dark:text-rose-400'
                                       : location
                                       ? isSelected
-                                        ? 'bg-amber-500/20 border-b-2 border-amber-500 text-amber-900 dark:text-amber-200 font-medium'
-                                        : 'border-b border-dashed border-amber-500/60 hover:bg-amber-500/10 text-slate-900 dark:text-slate-100'
+                                        ? 'text-amber-900 dark:text-amber-200 font-medium'
+                                        : 'text-slate-900 dark:text-slate-100'
                                       : 'text-slate-500'
                                   }`}
                                   title={
@@ -366,7 +374,17 @@ export function ComparisonTable({ schemaType, results, alignment, files, demoMod
                                     (location ? 'Click cell target to inspect PDF citation source' : 'Source not verified')
                                   }
                                 >
-                                  <span>
+                                  <span
+                                    className={`inline-block leading-none rounded-[3px] px-1 border-b-2 transition-colors ${
+                                      discrepancy
+                                        ? 'bg-rose-500/10 border-rose-500/40'
+                                        : location
+                                        ? isSelected
+                                          ? 'bg-amber-500/20 border-amber-500'
+                                          : 'border-amber-500/60 border-dashed hover:bg-amber-500/10'
+                                        : 'border-transparent'
+                                    }`}
+                                  >
                                     {formatValue(item.qty.value)} × {formatValue(item.unitPrice.value)} = {formatValue(item.total.value)}
                                   </span>
                                   {location && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
