@@ -1,9 +1,11 @@
 // app/api/extract/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { extractDocument } from '@/lib/extraction/extract';
+import { extractDocument, type ExtractionProviderName } from '@/lib/extraction/extract';
 import { buildPageMarkedText } from '@/lib/extraction/pageText';
 import { locateQuote } from '@/lib/extraction/locate';
-import { verifyExtractions, type FlaggedField } from '@/lib/extraction/verifier';
+import { verifyExtractions } from '@/lib/extraction/verifier';
+import { isProviderQuotaError } from '@/lib/extraction/providers/errors';
+import { isKnownSampleDocument, staticExtractionForSample } from '@/lib/extraction/staticFallback';
 import { checkVendorQuoteMath } from '@/lib/validation/mathCheck';
 import { alignLineItems } from '@/lib/alignment/lineItems';
 import type { ParsedDocument } from '@/lib/parsers/types';
@@ -15,7 +17,12 @@ export const runtime = 'nodejs';
 interface RequestBody {
   documents: ParsedDocument[];
   schemaType: DocumentSchemaType;
+  /** Optional provider override; falls back to EXTRACTION_PROVIDER (default gemini). */
+  provider?: ExtractionProviderName;
 }
+
+/** Where a result's data came from. `static-fallback` implies demoMode. */
+export type ExtractionSource = 'live' | 'static-fallback';
 
 /**
  * Walks every field-envelope in an extraction result and resolves its
@@ -54,6 +61,27 @@ function resolveLocations(
   return locations;
 }
 
+/**
+ * Runs one extraction (live or static) through the shared verification
+ * pipeline: quote re-check, source location resolution, math validation.
+ * Both live and static-fallback results pass through here, so a static
+ * payload gets exactly the same scrutiny as a live one.
+ */
+function buildResult(
+  doc: ParsedDocument,
+  parsed: OfferLetterExtraction | VendorQuoteExtraction,
+  schemaType: DocumentSchemaType,
+  source: ExtractionSource,
+) {
+  const sourceText = buildPageMarkedText(doc);
+  const { trusted, flaggedFields, extractions } = verifyExtractions(parsed, sourceText);
+  const locations = resolveLocations(doc, extractions);
+  const mathDiscrepancies =
+    schemaType === 'vendor_quote' ? checkVendorQuoteMath(extractions as VendorQuoteExtraction) : undefined;
+
+  return { fileName: doc.fileName, trusted, flaggedFields, extractions, locations, mathDiscrepancies, source };
+}
+
 export async function POST(req: NextRequest) {
   let body: RequestBody;
   try {
@@ -68,15 +96,11 @@ export async function POST(req: NextRequest) {
   if (body.schemaType !== 'offer_letter' && body.schemaType !== 'vendor_quote') {
     return NextResponse.json({ error: '"schemaType" must be "offer_letter" or "vendor_quote".' }, { status: 400 });
   }
+  if (body.provider !== undefined && body.provider !== 'gemini' && body.provider !== 'anthropic') {
+    return NextResponse.json({ error: '"provider" must be "gemini" or "anthropic".' }, { status: 400 });
+  }
 
-  const results: Array<{
-    fileName: string;
-    trusted: boolean;
-    flaggedFields: FlaggedField[];
-    extractions: OfferLetterExtraction | VendorQuoteExtraction;
-    locations: Record<string, ReturnType<typeof locateQuote>>;
-    mathDiscrepancies?: ReturnType<typeof checkVendorQuoteMath>;
-  }> = [];
+  const results: Array<ReturnType<typeof buildResult>> = [];
   const errors: Array<{ fileName: string; message: string }> = [];
 
   // Sequential, not Promise.all: keeps this predictable and easy to reason
@@ -85,18 +109,20 @@ export async function POST(req: NextRequest) {
   // without needing Promise.allSettled bookkeeping.
   for (const doc of body.documents) {
     try {
-      const { parsed } = await extractDocument(doc, body.schemaType);
-      // Rebuild the exact page-marked text the extractor quoted from, and
-      // re-check every rawQuote against it server-side — no client input
-      // is trusted for verification.
-      const sourceText = buildPageMarkedText(doc);
-      const { trusted, flaggedFields, extractions } = verifyExtractions(parsed, sourceText);
-      const locations = resolveLocations(doc, extractions);
-      const mathDiscrepancies =
-        body.schemaType === 'vendor_quote' ? checkVendorQuoteMath(extractions as VendorQuoteExtraction) : undefined;
-
-      results.push({ fileName: doc.fileName, trusted, flaggedFields, extractions, locations, mathDiscrepancies });
+      const { parsed } = await extractDocument(doc, body.schemaType, body.provider);
+      results.push(buildResult(doc, parsed, body.schemaType, 'live'));
     } catch (err) {
+      // Degraded-mode fallback: ONLY a quota/rate-limit/billing failure on a
+      // KNOWN sample document may serve the pre-verified static payload. The
+      // response is marked demoMode so the UI renders a visible banner. Any
+      // other failure (or any non-sample document) stays a plain, honest error.
+      if (isProviderQuotaError(err) && isKnownSampleDocument(doc.fileName)) {
+        const staticParsed = staticExtractionForSample(doc.fileName, body.schemaType);
+        if (staticParsed) {
+          results.push(buildResult(doc, staticParsed, body.schemaType, 'static-fallback'));
+          continue;
+        }
+      }
       errors.push({ fileName: doc.fileName, message: err instanceof Error ? err.message : String(err) });
     }
   }
@@ -114,8 +140,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const demoMode = results.some((r) => r.source === 'static-fallback');
+
   return NextResponse.json(
-    { results, errors, alignment },
+    { results, errors, alignment, demoMode },
     { status: results.length > 0 ? 200 : 422 },
   );
 }

@@ -7,6 +7,7 @@ import type { ParsedDocument, SourceLocation } from '@/lib/parsers/types';
 import type { OfferLetterExtraction, VendorQuoteExtraction, DocumentSchemaType } from '@/lib/schemas/extraction';
 import type { MathDiscrepancy } from '@/lib/validation/mathCheck';
 import type { FlaggedField } from '@/lib/extraction/verifier';
+import { DemoModeBanner } from '@/components/DemoModeBanner';
 
 const ComparisonTable = dynamic(
   () => import('@/components/ComparisonTable').then((mod) => mod.ComparisonTable),
@@ -26,6 +27,8 @@ interface DocResult {
   extractions: OfferLetterExtraction | VendorQuoteExtraction;
   locations: Record<string, SourceLocation | null>;
   mathDiscrepancies?: MathDiscrepancy[];
+  /** Where this result's data came from; `static-fallback` implies demoMode. */
+  source?: 'live' | 'static-fallback';
 }
 
 interface AlignmentOutcome {
@@ -60,6 +63,7 @@ export default function Home() {
   const [stage, setStage] = useState<Stage>('idle');
   const [results, setResults] = useState<DocResult[]>([]);
   const [alignment, setAlignment] = useState<AlignmentOutcome | null>(null);
+  const [demoMode, setDemoMode] = useState<boolean>(false);
   const [errors, setErrors] = useState<{ fileName: string; message: string }[]>([]);
 
   async function handleFilesSelected(fileList: FileList | null) {
@@ -90,6 +94,7 @@ export default function Home() {
     setErrors([]);
     setResults([]);
     setAlignment(null);
+    setDemoMode(false);
 
     // Step 1: parse
     setStage('parsing');
@@ -141,6 +146,7 @@ export default function Home() {
       const extractBody = await extractRes.json();
       setResults(extractBody.results ?? []);
       setAlignment(extractBody.alignment ?? null);
+      setDemoMode(extractBody.demoMode === true);
       if (extractBody.errors?.length) {
         setErrors((prev) => [...prev, ...extractBody.errors]);
       }
@@ -178,6 +184,7 @@ export default function Home() {
     if (next) setSchemaType('vendor_quote');
     setResults([]);
     setAlignment(null);
+    setDemoMode(false);
     setErrors([]);
     setStage('idle');
   }
@@ -414,11 +421,14 @@ export default function Home() {
               </span>
             </div>
 
+            {demoMode && <DemoModeBanner variant="banner" />}
+
             <ComparisonTable
               schemaType={schemaType}
               results={results}
               alignment={alignment}
               files={files}
+              demoMode={demoMode}
             />
           </section>
         )}

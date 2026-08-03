@@ -36,6 +36,14 @@ npm run test:gemini
 
 It extracts the bundled sample PDFs and the canonical verifier-fixture letter through the real Gemini API, then re-checks every rawQuote with `verifyExtractions` — the same gate the API route applies.
 
+### Honest degraded-mode fallback (demoMode)
+
+When live extraction fails with a **quota / rate-limit / billing** error (`lib/extraction/providers/errors.ts`, `isProviderQuotaError`) the API does NOT fabricate data for arbitrary documents. Instead:
+
+- **Known bundled samples only** (`offer_a.pdf`, `offer_b.pdf`, `offer_missing_pto.pdf`) may be served from pre-verified static payloads (`lib/extraction/staticFallback.ts`). Those payloads still pass through the full request-time verification pipeline (quote re-check, location resolution, math check).
+- Any response containing a static payload is marked `demoMode: true`, and the UI renders a prominent "not live data" banner (page banner + per-table badge) so it cannot be mistaken for a live extraction.
+- **Any other document** (or any non-quota failure) surfaces as a plain, honest error — never static data disguised as live results.
+
 ## Verification Layer
 
 `lib/extraction/verifier.ts` exports `verifyExtractions(extractions, sourceText)`, which re-checks every extracted field against the original document text before the payload is trusted for comparison. It runs after schema extraction in `app/api/extract/route.ts`, which rebuilds the page-marked source text server-side via `buildPageMarkedText` and passes it in.
@@ -73,6 +81,8 @@ Remaining findings and why they are deferred:
 No `npm audit fix --force` was run: its proposed resolution (downgrading `next` to `9.3.3`) is a breaking change, and the remaining findings require deliberate upgrade work rather than an automated flag.
 
 ## Known Limitations
+
+- **Vendor-quote alignment is still Anthropic-only.** `lib/alignment/lineItems.ts` uses `claude-sonnet-4-6` (via `@anthropic-ai/sdk`) to group matching line items across vendor quotes. This is a separate path from document extraction: offer-letter extraction runs on Gemini with the honest static fallback, but alignment has no provider override and no degraded-mode fallback yet. If the Anthropic key is unavailable or rate-limited, the `/api/extract` route records an `(alignment)` error and returns the per-document results unaligned rather than failing the whole response.
 
 - **Serverless payload ceiling (4.5MB).** Vercel serverless functions reject request bodies over ~4.5MB, and this applies to user-uploaded documents too — not just the bundled samples — so a real user uploading a large (e.g. image-heavy) PDF will hit the same 413 error the samples used to trigger. Keep uploads well under that size.
 

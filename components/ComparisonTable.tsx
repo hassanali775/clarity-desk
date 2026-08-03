@@ -6,6 +6,7 @@ import type { SourceLocation } from '@/lib/parsers/types';
 import type { OfferLetterExtraction, VendorQuoteExtraction, DocumentSchemaType } from '@/lib/schemas/extraction';
 import type { MathDiscrepancy } from '@/lib/validation/mathCheck';
 import type { FlaggedField } from '@/lib/extraction/verifier';
+import { DemoModeBanner } from '@/components/DemoModeBanner';
 import dynamic from 'next/dynamic';
 
 const PdfSourceViewer = dynamic(() => import('./PdfSourceViewer'), { ssr: false });
@@ -17,6 +18,8 @@ interface DocResult {
   extractions: OfferLetterExtraction | VendorQuoteExtraction;
   locations: Record<string, SourceLocation | null>;
   mathDiscrepancies?: MathDiscrepancy[];
+  /** Where this result's data came from; `static-fallback` implies demoMode. */
+  source?: 'live' | 'static-fallback';
 }
 
 interface AlignmentOutcome {
@@ -32,6 +35,9 @@ interface Props {
   /** Original uploaded files, keyed by fileName, so the source viewer can
    *  re-render the exact PDF the location refers to. */
   files: Record<string, File>;
+  /** True when the API served pre-verified static sample data because live
+   *  extraction was rate-limited. Renders a prominent "not live data" banner. */
+  demoMode?: boolean;
 }
 
 const OFFER_LETTER_FIELDS: (keyof OfferLetterExtraction)[] = [
@@ -170,7 +176,7 @@ function FlagBadge({
   );
 }
 
-export function ComparisonTable({ schemaType, results, alignment, files }: Props) {
+export function ComparisonTable({ schemaType, results, alignment, files, demoMode = false }: Props) {
   const [selected, setSelected] = useState<{ fileName: string; location: SourceLocation | null } | null>(null);
   const [openFlag, setOpenFlag] = useState<string | null>(null);
 
@@ -180,6 +186,15 @@ export function ComparisonTable({ schemaType, results, alignment, files }: Props
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
       {/* Audit Table Section */}
       <div className="lg:col-span-7 xl:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden flex flex-col">
+        {demoMode && (
+          <div className="border-b border-amber-500/40 bg-slate-50/80 dark:bg-slate-950/60 p-3">
+            <DemoModeBanner variant="badge" />
+            <p className="mt-1.5 text-[11px] text-amber-700/90 dark:text-amber-400/90 max-w-prose">
+              Live extraction is rate-limited right now, so these rows show the pre-verified sample document —
+              this is not live data from your upload.
+            </p>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             {/* Sticky Header Row */}
