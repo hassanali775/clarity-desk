@@ -32,6 +32,8 @@ interface SetupResult {
   root: ReturnType<typeof createRoot>;
 }
 
+let fetchMock: Mock;
+
 function setup(): SetupResult {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -58,7 +60,7 @@ function mockFetchForFiles(fileNames: string[]): Mock {
     source: 'live',
   }));
 
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
     if (path.includes('/api/parse')) {
       return { ok: true, status: 200, json: async () => ({ documents, errors: [] }) };
@@ -146,7 +148,7 @@ describe('Document upload file removal', () => {
   });
 
   it('stages a single file without calling /api/extract or showing an error, then compares once a second file arrives', async () => {
-    const fetchMock = mockFetchForFiles(['offer_a.pdf', 'offer_b.pdf']);
+    mockFetchForFiles(['offer_a.pdf', 'offer_b.pdf']);
     const { container, root } = setup();
 
     await selectFiles(container, ['offer_a.pdf']);
