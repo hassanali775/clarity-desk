@@ -88,13 +88,23 @@ export default function Home() {
       setStage('error');
       return;
     }
-    const fileMap: Record<string, File> = {};
+    // Merge the new selection into the files already staged in the dropzone so
+    // users can add one file at a time and still reach a comparable pair.
+    const fileMap: Record<string, File> = { ...files };
     selectedFiles.forEach((f) => (fileMap[f.name] = f));
     setFiles(fileMap);
     setErrors([]);
     setResults([]);
     setAlignment(null);
     setDemoMode(false);
+
+    // Comparison extraction requires at least 2 documents. Staging a single
+    // file should hold it in the dropzone without calling /api/extract or
+    // surfacing an error — the pipeline picks up once a second file arrives.
+    if (Object.keys(fileMap).length < 2) {
+      setStage('idle');
+      return;
+    }
 
     // Step 1: parse
     setStage('parsing');
@@ -175,6 +185,27 @@ export default function Home() {
     } catch (err) {
       setErrors([{ fileName: '(samples)', message: err instanceof Error ? err.message : String(err) }]);
       setStage('error');
+    }
+  }
+
+  /**
+   * Removes a single uploaded file and everything derived from it: the file
+   * itself, its parsed/extracted result (the matching comparison-table
+   * column), and any errors tied to it. Alignment groups are index-based, so
+   * they go stale the moment a result is dropped and are reset for the next
+   * comparison run. When the last file is removed, the page returns to the
+   * empty idle/upload state.
+   */
+  function handleRemoveFile(fileName: string) {
+    const remaining = { ...files };
+    delete remaining[fileName];
+    setFiles(remaining);
+    setResults((prev) => prev.filter((r) => r.fileName !== fileName));
+    setErrors((prev) => prev.filter((e) => e.fileName !== fileName));
+    setAlignment(null);
+    if (Object.keys(remaining).length === 0) {
+      setDemoMode(false);
+      setStage('idle');
     }
   }
 
@@ -339,15 +370,33 @@ export default function Home() {
                 {selectedFileNames.map((name) => (
                   <span
                     key={name}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300"
+                    className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300"
                   >
-                    <svg className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    {name}
+                    <span className="max-w-[180px] truncate" title={name}>{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFile(name)}
+                      disabled={stage === 'parsing' || stage === 'extracting'}
+                      aria-label={`Remove ${name}`}
+                      title="Remove file"
+                      className="inline-flex items-center justify-center w-5 h-5 rounded-md text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </span>
                 ))}
               </div>
+            )}
+
+            {selectedFileNames.length === 1 && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Add at least one more document to run the comparison.
+              </p>
             )}
           </div>
         </section>

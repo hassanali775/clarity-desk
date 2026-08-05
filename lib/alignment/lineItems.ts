@@ -1,71 +1,30 @@
 // lib/alignment/lineItems.ts
-import Anthropic from '@anthropic-ai/sdk';
-import { z } from 'zod';
-import type { VendorQuoteExtraction } from '@/lib/schemas/extraction';
+//
+// Provider-agnostic line-item alignment dispatcher. Mirrors
+// lib/extraction/extract.ts: the SAME EXTRACTION_PROVIDER env flag that selects
+// the extraction provider also selects the alignment provider, so one env var
+// keeps both layers on the same vendor.
+//
+//   EXTRACTION_PROVIDER=anthropic  -> Claude (claude-sonnet-4-6) aligns line items
+//   EXTRACTION_PROVIDER=gemini     -> Gemini (GEMINI_MODEL, default gemini-3.5-flash)
+//
+// Quota failures degrade the same way extraction degrades: a throttled call
+// returns an honest, UNTRUSTED empty outcome instead of throwing, so a quota
+// hit never takes down the whole comparison response.
+import { selectExtractionProvider } from '@/lib/extraction/extract';
+import { isProviderQuotaError } from '@/lib/extraction/providers/errors';
+import { alignWithAnthropic } from '@/lib/alignment/providers/anthropic';
+import { alignWithGemini } from '@/lib/alignment/providers/gemini';
+import {
+  AlignmentResultSchema,
+  type AlignmentResult,
+  type AlignedGroup,
+  type AlignmentOutcome,
+  type QuoteForAlignment,
+} from '@/lib/alignment/schema';
 
-const anthropic = new Anthropic();
-
-const ItemRef = z.object({ quoteIndex: z.number().int(), lineItemIndex: z.number().int() });
-
-const AlignmentResultSchema = z.object({
-  groups: z.array(
-    z.object({
-      canonicalDescription: z.string(),
-      members: z.array(ItemRef),
-    }),
-  ),
-  unmatched: z.array(ItemRef),
-});
-type AlignmentResult = z.infer<typeof AlignmentResultSchema>;
-
-export interface QuoteForAlignment {
-  fileName: string;
-  lineItems: VendorQuoteExtraction['lineItems'];
-}
-
-export interface AlignedGroup {
-  canonicalDescription: string;
-  members: { quoteIndex: number; lineItemIndex: number }[];
-}
-
-export interface AlignmentOutcome {
-  groups: AlignedGroup[];
-  unmatched: { quoteIndex: number; lineItemIndex: number }[];
-  /** True only when every real line item was accounted for exactly once.
-   *  If false, callers should treat `groups` as untrustworthy and fall
-   *  back to showing items unaligned rather than displaying a broken grouping. */
-  trusted: boolean;
-}
-
-const SYSTEM_PROMPT = `You match line items across multiple vendor quotes that describe the
-same underlying product or service, even when wording, units, or ordering differ
-(e.g. "50x Widget A" and "Widget Model A, Blue, qty 50" may be the same item).
-
-You will be given each quote's line items as a JSON array, indexed by quoteIndex
-(which quote) and lineItemIndex (position within that quote's lineItems array).
-
-Rules:
-1. Only reference (quoteIndex, lineItemIndex) pairs that actually appear in the input.
-   Never invent an index.
-2. Every line item across every quote must appear exactly once, either inside
-   a group's "members" or inside "unmatched". Do not drop items, do not
-   duplicate items across groups.
-3. Put an item in "unmatched" if you cannot confidently match it to anything —
-   do not force a low-confidence match into a group just to avoid an unmatched item.`;
-
-function buildAlignmentPrompt(quotes: QuoteForAlignment[]): string {
-  const payload = quotes.map((q, quoteIndex) => ({
-    quoteIndex,
-    fileName: q.fileName,
-    lineItems: q.lineItems.map((item, lineItemIndex) => ({
-      lineItemIndex,
-      description: item.description.value,
-      qty: item.qty.value,
-      unitPrice: item.unitPrice.value,
-    })),
-  }));
-  return JSON.stringify(payload, null, 2);
-}
+export { AlignmentResultSchema };
+export type { AlignmentResult, AlignedGroup, AlignmentOutcome, QuoteForAlignment };
 
 /**
  * Deterministically validates the model's alignment output against the real
@@ -107,41 +66,34 @@ export function validate(result: AlignmentResult, quotes: QuoteForAlignment[]): 
   return { groups: result.groups, unmatched: result.unmatched, trusted };
 }
 
+function allItemsUnmatched(quotes: QuoteForAlignment[]): AlignmentOutcome['unmatched'] {
+  return quotes.flatMap((q, quoteIndex) =>
+    q.lineItems.map((_, lineItemIndex) => ({ quoteIndex, lineItemIndex })),
+  );
+}
+
 export async function alignLineItems(quotes: QuoteForAlignment[]): Promise<AlignmentOutcome> {
   // Nothing to align with fewer than two quotes — skip the API call entirely.
   if (quotes.length < 2) {
-    const unmatched = quotes.flatMap((q, quoteIndex) =>
-      q.lineItems.map((_, lineItemIndex) => ({ quoteIndex, lineItemIndex })),
-    );
-    return { groups: [], unmatched, trusted: true };
+    return { groups: [], unmatched: allItemsUnmatched(quotes), trusted: true };
   }
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildAlignmentPrompt(quotes) }],
-    tools: [
-      {
-        name: 'align_line_items',
-        description: 'Group line items across quotes that refer to the same product/service.',
-        input_schema: z.toJSONSchema(AlignmentResultSchema) as Anthropic.Tool.InputSchema,
-      },
-    ],
-    tool_choice: { type: 'tool', name: 'align_line_items' },
-  });
-
-  const toolUseBlock = response.content.find(
-    (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
-  );
-  if (!toolUseBlock) {
-    throw new Error('Alignment call returned no tool_use block.');
+  try {
+    const result =
+      selectExtractionProvider() === 'anthropic'
+        ? await alignWithAnthropic(quotes)
+        : await alignWithGemini(quotes);
+    return validate(result, quotes);
+  } catch (err) {
+    // Same graceful-degradation philosophy as the extraction route: a quota /
+    // rate-limit / billing hit must not take the whole comparison down.
+    // Alignment is not load-bearing for displaying per-document results, so
+    // degrade to an honest UNTRUSTED empty outcome — the UI renders its
+    // "could not be verified" banner and shows items unaligned. Any other
+    // error still propagates, and the route records it as an `(alignment)` error.
+    if (isProviderQuotaError(err)) {
+      return { groups: [], unmatched: allItemsUnmatched(quotes), trusted: false };
+    }
+    throw err;
   }
-
-  const parsed = AlignmentResultSchema.safeParse(toolUseBlock.input);
-  if (!parsed.success) {
-    throw new Error(`Alignment output failed schema validation: ${parsed.error.message}`);
-  }
-
-  return validate(parsed.data, quotes);
 }
