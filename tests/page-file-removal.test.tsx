@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import Home from '@/app/page';
 import type { OfferLetterExtraction } from '@/lib/schemas/extraction';
 
@@ -41,7 +42,7 @@ function setup(): SetupResult {
   return { container, root };
 }
 
-function mockFetchForFiles(fileNames: string[]) {
+function mockFetchForFiles(fileNames: string[]): Mock {
   const documents = fileNames.map((fileName) => ({
     fileName,
     sourceFormat: 'pdf',
