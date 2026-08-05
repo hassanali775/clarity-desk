@@ -1,3 +1,16 @@
+# ClarityDesk
+
+## System Architecture & Verification Layer
+
+Most LLM extraction tools trust the model's output as long as it returns valid JSON. **ClarityDesk does not.**
+
+Every extracted field is re-verified at request time against the source document using a multi-stage audit pipeline:
+
+1. **Quote Presence Audit**: Flags any field where the cited source text does not exist verbatim in the document.
+2. **Value Derivability Audit**: Verifies that numbers/values actually match their cited source text. (e.g., catching cases where an LLM returns `baseSalary: 210000` while citing `"$185,000 - $195,000"`—the quote exists, but the value is non-derivable).
+3. **Resilient Failure Handling**: When upstream API rate limits occur (such as free-tier Gemini `503` spikes), document failures are handled per-file rather than failing the entire batch, allowing remaining processed documents to render safely.
+4. **Serverless Runtime Engineering**: Built provider-agnostic after resolving two Node/Vercel serverless runtime constraints: handling browser-only canvas dependencies (`DOMMatrix`) in serverless environments and configuring Next.js dynamic import tracing for PDF worker bundles.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -26,7 +39,7 @@ Extraction is provider-agnostic behind `lib/extraction/extract.ts`. The system p
 
 - **Default: Gemini** (`gemini-3.5-flash`, a free-tier model). Driven by the official `@google/genai` SDK, with structured output via `responseJsonSchema` + `responseMimeType: 'application/json'` (`lib/extraction/providers/gemini.ts`). Configure with the `GEMINI_API_KEY` env var; override the model with `GEMINI_MODEL` (e.g. `gemini-3.5-flash-lite`).
 - **Fallback option: Anthropic** (`claude-sonnet-4-6`, the previous default) via `EXTRACTION_PROVIDER=anthropic` (`lib/extraction/providers/anthropic.ts`). The API route also accepts a per-request `provider` field.
-- Set `EXTRACTION_PROVIDER=gemini` (or omit it) to use Gemini, `EXTRACTION_PROVIDER=anthropic` to use Claude.
+- Set `EXTRACTION_PROVIDER=gemini` (or omit it) to use Gemini, `EXTRACTION_PROVIDER=anthropic` to use Claude. The same flag also drives vendor-quote line-item alignment (`lib/alignment/`), so one env var keeps both layers on the same vendor.
 
 Live verification harness (requires `GEMINI_API_KEY`):
 
@@ -82,7 +95,7 @@ No `npm audit fix --force` was run: its proposed resolution (downgrading `next` 
 
 ## Known Limitations
 
-- **Vendor-quote alignment is still Anthropic-only.** `lib/alignment/lineItems.ts` uses `claude-sonnet-4-6` (via `@anthropic-ai/sdk`) to group matching line items across vendor quotes. This is a separate path from document extraction: offer-letter extraction runs on Gemini with the honest static fallback, but alignment has no provider override and no degraded-mode fallback yet. If the Anthropic key is unavailable or rate-limited, the `/api/extract` route records an `(alignment)` error and returns the per-document results unaligned rather than failing the whole response.
+- **Vendor-quote alignment shares the extraction provider.** `lib/alignment/lineItems.ts` groups matching line items across vendor quotes using the same provider as document extraction — Gemini (`gemini-3.5-flash`) by default, Claude (`claude-sonnet-4-6`) under `EXTRACTION_PROVIDER=anthropic` (`lib/alignment/providers/`), so one env var controls both layers. Alignment also degrades gracefully on quota / rate-limit / billing failures: a throttled call returns an honest, untrusted, unaligned outcome (rather than throwing), and the UI shows its "could not be verified" banner alongside the per-document results. Only non-quota failures surface as an `(alignment)` error entry, and even then the route returns the per-document results unaligned rather than failing the whole response.
 
 - **Serverless payload ceiling (4.5MB).** Vercel serverless functions reject request bodies over ~4.5MB, and this applies to user-uploaded documents too — not just the bundled samples — so a real user uploading a large (e.g. image-heavy) PDF will hit the same 413 error the samples used to trigger. Keep uploads well under that size.
 
