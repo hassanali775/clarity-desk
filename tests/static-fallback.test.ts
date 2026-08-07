@@ -49,11 +49,23 @@ describe('isProviderQuotaError classifier', () => {
     expect(isProviderQuotaError(err)).toBe(true);
   });
 
+  it('matches HTTP status 503 (service unavailable / capacity)', () => {
+    const err = Object.assign(new Error('backend unavailable'), { status: 503 });
+    expect(isProviderQuotaError(err)).toBe(true);
+  });
+
   it('matches quota/rate-limit phrasing in the message regardless of status', () => {
     expect(isProviderQuotaError(new Error('quota exceeded for requests per minute'))).toBe(true);
     expect(isProviderQuotaError(new Error('API rate limit reached'))).toBe(true);
     expect(isProviderQuotaError(new Error('Insufficient quota to execute this request'))).toBe(true);
     expect(isProviderQuotaError(new Error('RESOURCE_EXHAUSTED: The model is overloaded'))).toBe(true);
+  });
+
+  it('matches 503 / UNAVAILABLE / overloaded capacity spikes regardless of status', () => {
+    expect(isProviderQuotaError(new Error('503 Service Unavailable'))).toBe(true);
+    expect(isProviderQuotaError(new Error('UNAVAILABLE: server overloaded'))).toBe(true);
+    expect(isProviderQuotaError(new Error('The model is overloaded'))).toBe(true);
+    expect(isProviderQuotaError(Object.assign(new Error('overloaded'), { statusCode: 503 }))).toBe(true);
   });
 
   it('does NOT match unrelated provider errors', () => {
