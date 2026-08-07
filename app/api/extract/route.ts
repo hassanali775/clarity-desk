@@ -8,6 +8,8 @@ import { isProviderQuotaError } from '@/lib/extraction/providers/errors';
 import { isKnownSampleDocument, staticExtractionForSample } from '@/lib/extraction/staticFallback';
 import { checkVendorQuoteMath } from '@/lib/validation/mathCheck';
 import { alignLineItems } from '@/lib/alignment/lineItems';
+import { exceedsPayloadLimit, PAYLOAD_LIMIT_ERROR_MESSAGE } from '@/lib/payloadLimit';
+import { extractRateLimiter } from '@/lib/ratelimit';
 import type { ParsedDocument } from '@/lib/parsers/types';
 import type { DocumentSchemaType } from '@/lib/schemas/extraction';
 import type { OfferLetterExtraction, VendorQuoteExtraction } from '@/lib/schemas/extraction';
@@ -98,6 +100,25 @@ export async function POST(req: NextRequest) {
   }
   if (body.provider !== undefined && body.provider !== 'gemini' && body.provider !== 'anthropic') {
     return NextResponse.json({ error: '"provider" must be "gemini" or "anthropic".' }, { status: 400 });
+  }
+
+  // Per-IP sliding-window throttle (in-memory). Cheap check that runs before
+  // any LLM call so automated scripts are shed early. Best-effort, not a
+  // distributed quota — see lib/ratelimit.ts.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+  if (!extractRateLimiter.allow(ip)) {
+    return NextResponse.json({ error: 'Too many requests. Please try again later.' }, {
+      status: 429,
+      headers: { 'Retry-After': '60' },
+    });
+  }
+
+  // Pre-flight size guard: reject oversized documents before any model call.
+  // The 4.5MB serverless body ceiling can be hit far below that by an
+  // image-heavy PDF; failing fast keeps the failure honest and cheap.
+  const oversized = body.documents.find((doc) => exceedsPayloadLimit(doc));
+  if (oversized) {
+    return NextResponse.json({ error: PAYLOAD_LIMIT_ERROR_MESSAGE }, { status: 400 });
   }
 
   const results: Array<ReturnType<typeof buildResult>> = [];

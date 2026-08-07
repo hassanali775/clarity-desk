@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { ParsedDocument } from '@/lib/parsers/types';
+import { EXTRACT_RATE_LIMIT, extractRateLimiter, InMemoryRateLimiter } from '@/lib/ratelimit';
+import { MAX_DOCUMENT_CHARS, MAX_DOCUMENT_PAGES } from '@/lib/payloadLimit';
 
 const { extractMock } = vi.hoisted(() => ({ extractMock: vi.fn() }));
 
@@ -31,16 +33,17 @@ function quotaError(): Error {
   return Object.assign(new Error('RESOURCE_EXHAUSTED: requests per minute exceeded'), { status: 429 });
 }
 
-function post(body: unknown): Promise<Response> {
+function post(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return POST(new NextRequest('http://localhost/api/extract', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   }));
 }
 
 beforeEach(() => {
   extractMock.mockReset();
+  extractRateLimiter.reset();
 });
 
 describe('POST /api/extract degraded-mode fallback', () => {
@@ -133,5 +136,87 @@ describe('POST /api/extract degraded-mode fallback', () => {
     const body = await res.json();
     expect(body.demoMode).toBe(false);
     expect(body.results[0].source).toBe('live');
+  });
+});
+
+describe('POST /api/extract payload size guard', () => {
+  it('rejects a document over the 50,000 character threshold before any LLM call', async () => {
+    const res = await post({
+      documents: [sourceDocument('huge.pdf', 'x'.repeat(MAX_DOCUMENT_CHARS + 1))],
+      schemaType: 'offer_letter',
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Vercel serverless size threshold');
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document with more than 10 pages before any LLM call', async () => {
+    const pages = Array.from({ length: MAX_DOCUMENT_PAGES + 1 }, (_, i) => ({
+      pageNum: i + 1,
+      text: 'page',
+      runs: [],
+    }));
+
+    const res = await post({
+      documents: [{ fileName: 'long.pdf', sourceFormat: 'pdf', pages }],
+      schemaType: 'offer_letter',
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Vercel serverless size threshold');
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a document exactly at the limits', async () => {
+    const pages = Array.from({ length: MAX_DOCUMENT_PAGES }, (_, i) => ({
+      pageNum: i + 1,
+      text: 'a'.repeat(Math.ceil(MAX_DOCUMENT_CHARS / MAX_DOCUMENT_PAGES)),
+      runs: [],
+    }));
+    extractMock.mockResolvedValueOnce({
+      parsed: { candidateName: { value: 'Alice Chen', rawQuote: 'Alice Chen', pageNum: 1, confidence: 'high' } },
+    });
+
+    const res = await post({
+      documents: [{ fileName: 'at-limit.pdf', sourceFormat: 'pdf', pages }],
+      schemaType: 'offer_letter',
+    });
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /api/extract rate limiting', () => {
+  it('throttles an IP once the sliding window is exhausted and recovers a different key', () => {
+    const limiter = new InMemoryRateLimiter(2, 1_000);
+
+    expect(limiter.allow('1.2.3.4')).toBe(true);
+    expect(limiter.allow('1.2.3.4')).toBe(true);
+    expect(limiter.allow('1.2.3.4')).toBe(false);
+    expect(limiter.allow('5.6.7.8')).toBe(true);
+  });
+
+  it('returns 429 for a throttled IP and never calls the provider', async () => {
+    const ip = '203.0.113.99';
+    for (let i = 0; i < EXTRACT_RATE_LIMIT; i++) {
+      extractRateLimiter.allow(ip);
+    }
+
+    const res = await post(
+      {
+        documents: [sourceDocument('offer_a.pdf', OFFER_A_SOURCE_TEXT)],
+        schemaType: 'offer_letter',
+      },
+      { 'x-forwarded-for': ip },
+    );
+
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.error).toContain('Too many requests');
+    expect(res.headers.get('Retry-After')).toBe('60');
+    expect(extractMock).not.toHaveBeenCalled();
   });
 });

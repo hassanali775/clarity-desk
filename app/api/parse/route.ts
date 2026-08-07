@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parsePdf } from '@/lib/parsers/pdf';
 import { parseDocx } from '@/lib/parsers/docx';
 import { parseXlsx } from '@/lib/parsers/xlsx';
+import { exceedsPayloadLimit, PAYLOAD_LIMIT_ERROR_MESSAGE } from '@/lib/payloadLimit';
 import type { ParseResult } from '@/lib/parsers/types';
 
 // pdfjs-dist and mammoth need Node APIs (Buffer, fs internals) — the Edge
@@ -78,14 +79,23 @@ export async function POST(req: NextRequest) {
   // still show 4 working rows, not a 500 error.
   const results = await Promise.all(files.map(parseOne));
 
-  const succeeded = results.filter((r): r is Extract<ParseResult, { ok: true }> => r.ok);
+  const parsedOk = results.filter((r): r is Extract<ParseResult, { ok: true }> => r.ok);
   const failed = results.filter((r): r is Extract<ParseResult, { ok: false }> => !r.ok);
+
+  // Pre-flight size guard on the parsed output: a document that is too large
+  // for live extraction is reported per-file (like the byte-size limit above)
+  // instead of being sent downstream toward an expensive model call.
+  const withinLimits = parsedOk.filter((r) => !exceedsPayloadLimit(r.document));
+  const oversized = parsedOk.filter((r) => exceedsPayloadLimit(r.document));
 
   return NextResponse.json(
     {
-      documents: succeeded.map((r) => r.document),
-      errors: failed.map((r) => ({ fileName: r.fileName, code: r.error.code, message: r.error.message })),
+      documents: withinLimits.map((r) => r.document),
+      errors: [
+        ...failed.map((r) => ({ fileName: r.fileName, code: r.error.code, message: r.error.message })),
+        ...oversized.map((r) => ({ fileName: r.document.fileName, code: 'DOCUMENT_TOO_LARGE', message: PAYLOAD_LIMIT_ERROR_MESSAGE })),
+      ],
     },
-    { status: succeeded.length > 0 ? 200 : 422 },
+    { status: withinLimits.length > 0 ? 200 : 422 },
   );
 }

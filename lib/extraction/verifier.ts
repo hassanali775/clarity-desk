@@ -1,7 +1,20 @@
 // lib/extraction/verifier.ts
 import type { OfferLetterExtraction, VendorQuoteExtraction } from '@/lib/schemas/extraction';
 
-export type VerificationReason = 'QUOTE_NOT_FOUND' | 'MISSING_QUOTE' | 'VALUE_NOT_DERIVABLE_FROM_QUOTE';
+export type VerificationReason =
+  | 'QUOTE_NOT_FOUND'
+  | 'MISSING_QUOTE'
+  | 'VALUE_NOT_DERIVABLE_FROM_QUOTE'
+  | 'SUSPICIOUS_QUOTE_INSTRUCTION';
+
+/**
+ * Prompt-injection keywords. A rawQuote containing any of these is treated as
+ * an embedded instruction rather than trustworthy evidence — even when the
+ * quote appears verbatim in the document, that may mean the document itself
+ * was weaponized to steer the model. Deliberately narrow: normal offer-letter
+ * / vendor-quote text never contains these phrases.
+ */
+const INJECTION_PATTERN = /ignore\s+prior|disregard|system\s+prompt|overwrite/i;
 
 export interface FlaggedField {
   /** Dot-notation path to the envelope, e.g. `baseSalary` or `lineItems[0].total`. */
@@ -160,7 +173,9 @@ function walkEnvelopes(node: unknown, path: string, visit: (path: string, envelo
  *  - a non-null value with a missing/empty rawQuote is flagged (can never be re-traced);
  *  - an honest null (value + rawQuote both null) is never flagged;
  *  - a rawQuote given for a null value is flagged only when it is fabricated;
- *  - a numeric value must be derivable from the number(s) its rawQuote states.
+ *  - a numeric value must be derivable from the number(s) its rawQuote states;
+ *  - a rawQuote that reads like an embedded prompt-injection instruction is
+ *    flagged as SUSPICIOUS_QUOTE_INSTRUCTION, even if it is genuine source text.
  *
  * Every flagged field has its confidence downgraded to "low" in the returned
  * copy, and `trusted` becomes false so callers can fall back to manual review.
@@ -188,7 +203,24 @@ export function verifyExtractions<T extends OfferLetterExtraction | VendorQuoteE
     }
 
     if (hasQuote) {
-      const normalizedQuote = normalizeForComparison(envelope.rawQuote as string);
+      const rawQuote = envelope.rawQuote as string;
+
+      // Prompt-injection guard: a quote that reads like an embedded instruction
+      // is refused regardless of whether it appears in the source. This runs
+      // before the presence check so the security signal is never masked by a
+      // QUOTE_NOT_FOUND flag (and a field never carries both).
+      if (INJECTION_PATTERN.test(rawQuote)) {
+        flaggedFields.push({
+          fieldPath: path,
+          reason: 'SUSPICIOUS_QUOTE_INSTRUCTION',
+          message: `Field "${path}" quotes text that looks like an embedded instruction ("${rawQuote}") — refusing to trust it as evidence.`,
+          rawQuote,
+        });
+        envelope.confidence = 'low';
+        return;
+      }
+
+      const normalizedQuote = normalizeForComparison(rawQuote);
       if (!normalizedSource.includes(normalizedQuote)) {
         flaggedFields.push({
           fieldPath: path,

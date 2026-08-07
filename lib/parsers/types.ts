@@ -40,6 +40,7 @@ export type ParseErrorCode =
   | 'CORRUPTED_FILE'
   | 'SCANNED_NO_TEXT_LAYER'
   | 'EMPTY_DOCUMENT'
+  | 'DOCUMENT_TOO_LARGE'
   | 'PARSE_FAILURE';
 
 export interface ParseError {

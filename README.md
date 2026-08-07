@@ -99,6 +99,13 @@ No `npm audit fix --force` was run: its proposed resolution (downgrading `next` 
 
 - **Serverless payload ceiling (4.5MB).** Vercel serverless functions reject request bodies over ~4.5MB, and this applies to user-uploaded documents too — not just the bundled samples — so a real user uploading a large (e.g. image-heavy) PDF will hit the same 413 error the samples used to trigger. Keep uploads well under that size.
 
+## Known System Limitations & Future Work
+
+1. **Indirect Prompt Injection.** Malicious text inside a document can try to steer the extraction model ("ignore previous instructions", "overwrite your rules"). The system prompt now marks document text as untrusted data, and the verifier flags any field whose `rawQuote` reads like an embedded instruction (`SUSPICIOUS_QUOTE_INSTRUCTION` in `lib/extraction/verifier.ts`). These are heuristic defenses: detection is regex-based and prompt hardening is probabilistic. Full isolation of a hostile document from the model would require running extraction inside a containerized sandbox — future work.
+2. **Scanned / Image PDFs.** No OCR engine is bundled. A scanned PDF produces a sparse (or empty) text layer, so fields cannot be extracted or verified against real text. Such files surface an honest `SCANNED_NO_TEXT_LAYER` parse error rather than fabricated data; adding an OCR pipeline (e.g. Tesseract) is future work.
+3. **Non-US Locale Numbering.** Comma-decimal formats (`1.234,56` or `€12.50`) are treated as thousands-separator / currency-punctuation drift by the verifier, which can mis-parse them. Such values are flagged for manual audit rather than silently normalized; locale-aware number handling is future work.
+4. **Complex Multi-Column Tables.** Line-item and multi-column alignment operates on a linearized text-extraction stream (`buildPageMarkedText`), so genuine two-dimensional table layout can be scrambled. Columns that are visually distinct but interleaved in the extraction order may misalign; layout-aware parsing (bounding-box based) is future work.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
